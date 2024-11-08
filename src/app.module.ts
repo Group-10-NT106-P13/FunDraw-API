@@ -7,10 +7,25 @@ import { AuthModule } from './modules/auth/auth.module';
 import { PrismaService } from './modules/prisma/prisma.service';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigModule } from '@nestjs/config';
+import envConfig from './config/env';
+import { RedisModule } from '@liaoliaots/nestjs-redis';
 
 @Module({
-  imports: [AuthModule, PrismaModule],
-  controllers: [AppController, AuthController],
-  providers: [AppService, AuthService, PrismaService, JwtService],
+    imports: [
+        ConfigModule.forRoot({
+            isGlobal: true,
+            load: [envConfig],
+        }),
+        RedisModule.forRoot({
+            config: {
+                url: process.env.REDIS_URL,
+            },
+        }),
+        AuthModule,
+        PrismaModule,
+    ],
+    controllers: [AppController, AuthController],
+    providers: [AppService, AuthService, PrismaService, JwtService],
 })
 export class AppModule {}
