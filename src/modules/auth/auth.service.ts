@@ -6,6 +6,8 @@ import { LoginDto } from './dto/login.dto';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
+import { RegisterDto } from './dto/register.dto';
+import { JWTTokenService } from '../jwtToken/jwtToken.service';
 
 @Injectable()
 export class AuthService {
@@ -14,6 +16,7 @@ export class AuthService {
     constructor(
         private prisma: PrismaService,
         private jwtService: JwtService,
+        private jwtToken: JWTTokenService,
         private configService: ConfigService,
         private readonly redisService: RedisService,
     ) {
@@ -36,28 +39,8 @@ export class AuthService {
         if (!isValidPassword) throw new BadRequestException('Invalid password');
 
         delete (user as any).password;
-        const accessToken = await this.jwtService.signAsync(
-            { id: user.id },
-            {
-                secret: this.configService.get('accessTokenSecret'),
-                expiresIn: '15m',
-            },
-        );
-        const refreshToken = await this.jwtService.signAsync(
-            { id: user.id },
-            {
-                secret: this.configService.get('refreshTokenSecret'),
-                expiresIn: '7d',
-            },
-        );
-
-        await this.redis?.set(`accessToken:${accessToken}`, user.id, 'EX', 900); // 15 minutes
-        await this.redis?.set(
-            `refreshToken:${refreshToken}`,
-            user.id,
-            'EX',
-            604800,
-        ); // 7 days
+        const accessToken = await this.jwtToken.setAccessToken(user.id);
+        const refreshToken = await this.jwtToken.setRefreshToken(user.id);
 
         return {
             user,
@@ -66,37 +49,68 @@ export class AuthService {
         };
     }
 
-    async validateAccessToken(token: string) {
+    async register(registerDto: RegisterDto) {
+        const { username, password, email } = registerDto;
+
+        const userExists = await this.prisma.users.findUnique({
+            where: {
+                username,
+            },
+        });
+
+        if (userExists) {
+            throw new BadRequestException('Username already exists!');
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const user = await this.prisma.users.create({
+            data: {
+                username,
+                password: hashedPassword,
+                email,
+            },
+        });
+
+        delete (user as any).password;
+
+        const accessToken = await this.jwtToken.setAccessToken(user.id);
+        const refreshToken = await this.jwtToken.setRefreshToken(user.id);
+
+        return {
+            user,
+            accessToken,
+            refreshToken,
+        };
+    }
+
+    async refreshToken(token: string) {
         try {
-            const { id } = await this.jwtService.verifyAsync<{ id: string }>(
-                token.replace('Bearer ', ''),
-                { secret: this.configService.get('refreshTokenSecret') },
+            const id = await this.redis?.get(
+                `refreshToken:${token.replace('Bearer ', '')}`,
             );
 
-            const userId = await this.redis?.get(`accessToken:${token}`);
+            if (!id) {
+                throw new BadRequestException('Invalid Token');
+            }
+
             const user = await this.prisma.users.findUnique({
                 where: {
                     id,
                 },
             });
 
+            await this.redis?.del(
+                `refreshToken:${token.replace('Bearer ', '')}`,
+            );
+
             if (!user) {
-                throw new BadRequestException('auth/invalid-token');
+                throw new BadRequestException('Invalid Token');
             }
 
-            const accessToken = await this.jwtService.signAsync(
-                { id: user.id },
-                {
-                    secret: this.configService.get('accessTokenSecret'),
-                    expiresIn: this.configService.get('accessTokenExpiresIn'),
-                },
-            );
-            const newRefreshToken = await this.jwtService.signAsync(
-                { id: user.id },
-                {
-                    secret: this.configService.get('refreshTokenSecret'),
-                    expiresIn: this.configService.get('refreshTokenExpiresIn'),
-                },
+            const accessToken = await this.jwtToken.setAccessToken(user.id);
+            const newRefreshToken = await this.jwtToken.setRefreshToken(
+                user.id,
             );
 
             return { accessToken, newRefreshToken };

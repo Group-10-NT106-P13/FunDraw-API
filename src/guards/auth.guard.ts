@@ -9,14 +9,20 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { PUBLIC_KEY } from '../decorators/public.decorator';
 import { UsersService } from '../modules/users/users.service';
+import { RedisService } from '@liaoliaots/nestjs-redis';
+import Redis from 'ioredis';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
+    private readonly redis: Redis | null;
+
     constructor(
-        private jwtService: JwtService,
         private usersService: UsersService,
+        private readonly redisService: RedisService,
         private reflector: Reflector,
-    ) {}
+    ) {
+        this.redis = this.redisService.getOrThrow();
+    }
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const is_public = this.reflector.get<boolean>(
@@ -32,30 +38,23 @@ export class AuthGuard implements CanActivate {
         const token = this.extractTokenFromHeader(request);
 
         if (!token) {
-            throw new UnauthorizedException('auth/invalid-token');
+            throw new UnauthorizedException();
         }
 
-        try {
-            const { id } = await this.jwtService.verifyAsync<{ id: string }>(
-                token,
-                {
-                    secret: process.env.ACCESS_TOKEN_SECRET,
-                },
-            );
+        const id = await this.redis?.get(`accessToken:${token}`);
 
-            const user = await this.usersService.findById(id);
-
-            if (!user) {
-                throw new UnauthorizedException('auth/invalid-token');
-            }
-
-            request['user'] = user;
-        } catch (e) {
-            throw new UnauthorizedException(
-                'auth/' + e.message.replaceAll(' ', '-'),
-                e.message,
-            );
+        if (!id) {
+            throw new UnauthorizedException('Invalid token!');
         }
+
+        const user = await this.usersService.findById(id);
+
+        if (!user) {
+            throw new UnauthorizedException('Invalid token!');
+        }
+
+        request['user'] = user;
+
         return true;
     }
 

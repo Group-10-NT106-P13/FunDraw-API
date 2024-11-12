@@ -10,6 +10,8 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 import envConfig from './config/env';
 import { RedisModule } from '@liaoliaots/nestjs-redis';
+import { UsersService } from './modules/users/users.service';
+import { JWTTokenService } from './modules/jwtToken/jwtToken.service';
 
 @Module({
     imports: [
@@ -26,6 +28,13 @@ import { RedisModule } from '@liaoliaots/nestjs-redis';
         PrismaModule,
     ],
     controllers: [AppController, AuthController],
-    providers: [AppService, AuthService, PrismaService, JwtService],
+    providers: [
+        AppService,
+        AuthService,
+        PrismaService,
+        JwtService,
+        UsersService,
+        JWTTokenService,
+    ],
 })
 export class AppModule {}

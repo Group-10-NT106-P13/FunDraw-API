@@ -14,7 +14,7 @@ export class UsersService {
         });
 
         if (!user) {
-            throw new BadRequestException('users/user-not-found');
+            throw new BadRequestException('User not found!');
         }
 
         delete (user as any).password;
