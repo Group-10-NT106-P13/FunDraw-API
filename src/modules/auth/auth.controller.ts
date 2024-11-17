@@ -1,25 +1,67 @@
-import {
-    Body,
-    Controller,
-    HttpCode,
-    Post,
-    Req,
-    Res,
-    UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { Request } from 'express';
 import { Public } from 'src/decorators/public.decorator';
 import { RegisterDto } from './dto/register.dto';
-import { AuthGuard } from 'src/guards/auth.guard';
+import {
+    ApiBody,
+    ApiHeader,
+    ApiOperation,
+    ApiParam,
+    ApiResponse,
+    ApiTags,
+} from '@nestjs/swagger';
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
     constructor(private readonly authService: AuthService) {}
 
     @Post('login')
     @Public()
+    @ApiOperation({
+        summary: 'Authenticate user',
+    })
+    @ApiBody({ type: LoginDto })
+    @ApiResponse({
+        status: 200,
+        description: 'Successfully authenticated.',
+        content: {
+            'application/json': {
+                example: {
+                    statusCode: 200,
+                    message: 'Login successful',
+                    data: {
+                        user: {
+                            id: '8bf7b1b4-7b7b-4b7b-8b7b-7b7b7b7b7b7b',
+                            username: 'user',
+                            email: 'user@lt.id.vn',
+                            createdAt: '2024-11-17T13:41:39.712Z',
+                            avatar: null,
+                        },
+                        accessToken:
+                            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijhi...',
+                        refreshToken:
+                            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjhiZj...',
+                    },
+                },
+            },
+        },
+    })
+    @ApiResponse({
+        status: 400,
+        description: 'Bad Request',
+        content: {
+            'application/json': {
+                example: {
+                    message: 'Account does not exists',
+                    error: 'Bad Request',
+                    statusCode: 400,
+                },
+            },
+        },
+    })
     async login(@Body() loginDto: LoginDto) {
         const { user, accessToken, refreshToken } =
             await this.authService.login(loginDto);
@@ -37,6 +79,48 @@ export class AuthController {
 
     @Post('register')
     @Public()
+    @ApiOperation({
+        summary: 'Register user',
+    })
+    @ApiBody({ type: RegisterDto })
+    @ApiResponse({
+        status: 201,
+        description: 'Successfully registered.',
+        content: {
+            'application/json': {
+                example: {
+                    statusCode: 201,
+                    message: 'Register successful',
+                    data: {
+                        user: {
+                            id: '8bf7b1b4-7b7b-4b7b-8b7b-7b7b7b7b7b7b',
+                            username: 'user',
+                            email: 'user@lt.id.vn',
+                            createdAt: '2024-11-17T13:41:39.712Z',
+                            avatar: null,
+                        },
+                        accessToken:
+                            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijhi...',
+                        refreshToken:
+                            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjhiZj...',
+                    },
+                },
+            },
+        },
+    })
+    @ApiResponse({
+        status: 400,
+        description: 'Bad Request',
+        content: {
+            'application/json': {
+                example: {
+                    message: 'Username already exists!',
+                    error: 'Bad Request',
+                    statusCode: 400,
+                },
+            },
+        },
+    })
     async register(@Body() registerDto: RegisterDto) {
         const { user, accessToken, refreshToken } =
             await this.authService.register(registerDto);
@@ -54,6 +138,45 @@ export class AuthController {
 
     @Post('refresh-token')
     @Public()
+    @ApiOperation({
+        summary: 'Authenticate user',
+    })
+    @ApiParam({
+        name: 'refreshToken',
+        required: true,
+        type: 'string',
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Successfully refreshed tokens.',
+        content: {
+            'application/json': {
+                example: {
+                    statusCode: 200,
+                    message: 'Token refreshed',
+                    data: {
+                        accessToken:
+                            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijhi...',
+                        refreshToken:
+                            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjhiZj...',
+                    },
+                },
+            },
+        },
+    })
+    @ApiResponse({
+        status: 400,
+        description: 'Bad Request',
+        content: {
+            'application/json': {
+                example: {
+                    message: 'Invalid Token',
+                    error: 'Bad Request',
+                    statusCode: 400,
+                },
+            },
+        },
+    })
     async refreshToken(@Req() req: Request) {
         const refreshToken = req.query['refreshToken'] as string;
 
@@ -71,6 +194,38 @@ export class AuthController {
     }
 
     @Post('logout')
+    @ApiOperation({
+        summary: 'Unauthenticate user',
+    })
+    @ApiHeader({
+        name: 'Authorization',
+        description: 'Bearer <token>',
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Successfully unauthenticate user.',
+        content: {
+            'application/json': {
+                example: {
+                    statusCode: 200,
+                    message: 'Logout successful',
+                },
+            },
+        },
+    })
+    @ApiResponse({
+        status: 400,
+        description: 'Bad Request',
+        content: {
+            'application/json': {
+                example: {
+                    message: 'Invalid Token!',
+                    error: 'Bad Request',
+                    statusCode: 400,
+                },
+            },
+        },
+    })
     @HttpCode(200)
     async logout(@Req() req: any) {
         const userId = req['user']?.id;

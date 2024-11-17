@@ -32,7 +32,7 @@ export class AuthService {
 
         if (!user) throw new BadRequestException('Account does not exists');
 
-        const isValidPassword = bcrypt.compare(password, user.password);
+        const isValidPassword = await bcrypt.compare(password, user.password);
 
         if (!isValidPassword) throw new BadRequestException('Invalid password');
 
@@ -76,6 +76,8 @@ export class AuthService {
         });
 
         delete (user as any).password;
+        delete (user as any).accessToken;
+        delete (user as any).refreshToken;
 
         const accessToken = await this.jwtToken.setAccessToken(user.id);
         const refreshToken = await this.jwtToken.setRefreshToken(user.id);
