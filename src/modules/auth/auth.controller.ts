@@ -1,9 +1,18 @@
-import { Body, Controller, Post, Req, Res } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    HttpCode,
+    Post,
+    Req,
+    Res,
+    UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { Request } from 'express';
 import { Public } from 'src/decorators/public.decorator';
 import { RegisterDto } from './dto/register.dto';
+import { AuthGuard } from 'src/guards/auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -58,6 +67,19 @@ export class AuthController {
                 accessToken,
                 refreshToken: newRefreshToken,
             },
+        };
+    }
+
+    @Post('logout')
+    @HttpCode(200)
+    async logout(@Req() req: any) {
+        const userId = req['user']?.id;
+
+        await this.authService.logout(userId);
+
+        return {
+            statusCode: 200,
+            message: 'Logout successful',
         };
     }
 }

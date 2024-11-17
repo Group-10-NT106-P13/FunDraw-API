@@ -5,7 +5,6 @@ import {
     UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { PUBLIC_KEY } from '../decorators/public.decorator';
 import { UsersService } from '../modules/users/users.service';
@@ -53,7 +52,7 @@ export class AuthGuard implements CanActivate {
             throw new UnauthorizedException('Invalid token!');
         }
 
-        request['user'] = user;
+        request.user = user;
 
         return true;
     }

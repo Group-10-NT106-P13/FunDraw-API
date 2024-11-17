@@ -1,0 +1,45 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - dev
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Install dependencies
+      run: npm install
+    - name: Linting
+      run: npm run lint
+    - name: Formatting check
+      run: npm run format
+    - name: Prisma generate
+      run: npx prisma generate
+    - name: Build
+      run: npm run build
+    - name: SSH Deploy
+          uses: appleboy/ssh-action@v1.0.3
+          with:
+            host: ${{ secrets.DEPLOY_IP }}
+            username: ${{ secrets.DEPLOY_USERNAME }}
+            key: ${{ secrets.DEPLOY_SSH_KEY }}
+            passphrase: ${{ secrets.DEPLOY_PASSWORD }}
+            script: |
+              cd /var/www/VLB_Web_BE
+              pm2 delete VLB_Web_BE
+              git stash --include-untracked
+              git reset --hard
+              git clean -fd
+              git pull origin dev
+              export NVM_DIR=~/.nvm
+              source ~/.nvm/nvm.sh
+              npm install
+              npm run build
+              pm2 start npm --name "VLB_Web_BE" -- run start:prod

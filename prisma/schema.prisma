@@ -8,10 +8,12 @@ datasource db {
 }
 
 model Users {
-    id          String      @id @default(uuid())
-    username    String      @unique @db.VarChar(255)
-    password    String      @db.VarChar(255)
-    email       String      @unique @db.VarChar(255)
-    createdAt   DateTime    @default(now())
-    avatar      String?
+    id            String      @id @default(uuid())
+    username      String      @unique @db.VarChar(255)
+    password      String      @db.VarChar(255)
+    email         String      @unique @db.VarChar(255)
+    createdAt     DateTime    @default(now())
+    avatar        String?
+    accessToken   String?
+    refreshToken  String?
 }
