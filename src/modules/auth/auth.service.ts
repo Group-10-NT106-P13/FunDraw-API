@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
@@ -8,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { RegisterDto } from './dto/register.dto';
 import { JWTTokenService } from '../jwtToken/jwtToken.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -53,7 +53,7 @@ export class AuthService {
     }
 
     async register(registerDto: RegisterDto) {
-        const { username, password, email } = registerDto;
+        const { username, password, confirm_password, email } = registerDto;
 
         const userExists = await this.prisma.users.findUnique({
             where: {
@@ -63,6 +63,10 @@ export class AuthService {
 
         if (userExists) {
             throw new BadRequestException('Username already exists!');
+        }
+
+        if (password !== confirm_password) {
+            throw new BadRequestException('Passwords do not match!');
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -143,5 +147,27 @@ export class AuthService {
         });
 
         return true;
+    }
+
+    async changePassword(userId: string, password: string) {
+        const hashed_password = await bcrypt.hash(password, 10);
+
+        await this.prisma.users.update({
+            where: {
+                id: userId,
+            },
+            data: {
+                password: hashed_password,
+            },
+        });
+
+        await this.jwtToken.clearOldTokens(userId);
+        const accessToken = await this.jwtToken.setAccessToken(userId);
+        const refreshToken = await this.jwtToken.setRefreshToken(userId);
+
+        return {
+            accessToken,
+            refreshToken,
+        };
     }
 }
