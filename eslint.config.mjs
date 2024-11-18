@@ -33,7 +33,6 @@ export default [{
 
         parserOptions: {
             project: "tsconfig.json",
-            tsconfigRootDir: "/Users/lt/Projects/FunDraw-API",
         },
     },
 
