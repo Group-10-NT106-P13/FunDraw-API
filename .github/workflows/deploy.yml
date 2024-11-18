@@ -31,7 +31,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            cd /var/www/FunDraw
+            cd ./FunDraw
             pm2 delete FunDraw
             git stash --include-untracked
             git reset --hard
