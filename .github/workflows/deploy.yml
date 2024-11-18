@@ -21,18 +21,18 @@ jobs:
       - name: Build
         run: npm run build
       - name: SSH Deploy
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_IP }}
           username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            cd ./FunDraw
+            cd ./FunDraw-API
             
-            echo "NODE_ENV=${{ secrets.DATABASE_URL }}" > .env
-            echo "DATABASE_URL=${{ secrets.REDIS_URL }}" >> .env
-            echo "PORT=${{ secrets.ACCESS_TOKEN_SECRET }}" >> .env
-            echo "PORT=${{ secrets.REFRESH_TOKEN_SECRET }}" >> .env
+            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
+            echo "REDIS_URL=${{ secrets.REDIS_URL }}" >> .env
+            echo "ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}" >> .env
+            echo "REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}" >> .env
 
             git pull
             
