@@ -3,11 +3,9 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import Redis from 'ioredis';
-import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { RegisterDto } from './dto/register.dto';
 import { JWTTokenService } from '../jwtToken/jwtToken.service';
-import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {

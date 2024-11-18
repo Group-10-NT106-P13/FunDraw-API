@@ -19,7 +19,6 @@ import {
     ApiResponse,
     ApiTags,
 } from '@nestjs/swagger';
-import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
 @ApiTags('Auth')
