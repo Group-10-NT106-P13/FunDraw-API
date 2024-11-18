@@ -1,6 +1,7 @@
 services:
   app:
     image: fundraw:latest
+    network_mode: "host"
     build:
       context: .
     ports:
