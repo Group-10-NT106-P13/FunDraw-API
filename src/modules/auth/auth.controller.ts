@@ -1,11 +1,4 @@
-import {
-    BadRequestException,
-    Body,
-    Controller,
-    HttpCode,
-    Post,
-    Req,
-} from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { Request } from 'express';
@@ -19,7 +12,6 @@ import {
     ApiResponse,
     ApiTags,
 } from '@nestjs/swagger';
-import { ChangePasswordDto } from './dto/change-password.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -243,64 +235,6 @@ export class AuthController {
         return {
             statusCode: 200,
             message: 'Logout successful',
-        };
-    }
-
-    @Post('change-password')
-    @ApiOperation({
-        summary: 'Change user password',
-    })
-    @ApiHeader({
-        name: 'Authorization',
-        description: 'Bearer <token>',
-    })
-    @ApiResponse({
-        status: 200,
-        description: 'Successfully changed user password.',
-        content: {
-            'application/json': {
-                example: {
-                    statusCode: 200,
-                    message: 'Password change successful',
-                },
-            },
-        },
-    })
-    @ApiResponse({
-        status: 400,
-        description: 'Bad Request',
-        content: {
-            'application/json': {
-                example: {
-                    message: 'Invalid Token!',
-                    error: 'Bad Request',
-                    statusCode: 400,
-                },
-            },
-        },
-    })
-    async changePassword(
-        @Req() req: any,
-        @Body() changePasswordDto: ChangePasswordDto,
-    ) {
-        const { password, confirm_password } = changePasswordDto;
-
-        if (password !== confirm_password) {
-            throw new BadRequestException('Password not match');
-        }
-
-        const userId = req['user']?.id;
-
-        const { accessToken, refreshToken } =
-            await this.authService.changePassword(userId, password);
-
-        return {
-            statusCode: 200,
-            message: 'Password change successful',
-            data: {
-                accessToken,
-                refreshToken,
-            },
         };
     }
 }

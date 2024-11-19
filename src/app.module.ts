@@ -12,6 +12,7 @@ import envConfig from './config/env';
 import { RedisModule } from '@liaoliaots/nestjs-redis';
 import { UsersService } from './modules/users/users.service';
 import { JWTTokenService } from './modules/jwtToken/jwtToken.service';
+import { UsersController } from './modules/users/users.controller';
 
 @Module({
     imports: [
@@ -27,7 +28,7 @@ import { JWTTokenService } from './modules/jwtToken/jwtToken.service';
         AuthModule,
         PrismaModule,
     ],
-    controllers: [AppController, AuthController],
+    controllers: [AppController, AuthController, UsersController],
     providers: [
         AppService,
         AuthService,

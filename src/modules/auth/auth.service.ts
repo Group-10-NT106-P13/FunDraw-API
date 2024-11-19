@@ -156,26 +156,4 @@ export class AuthService {
 
         return true;
     }
-
-    async changePassword(userId: string, password: string) {
-        const hashed_password = await bcrypt.hash(password, 10);
-
-        await this.prisma.users.update({
-            where: {
-                id: userId,
-            },
-            data: {
-                password: hashed_password,
-            },
-        });
-
-        await this.jwtToken.clearOldTokens(userId);
-        const accessToken = await this.jwtToken.setAccessToken(userId);
-        const refreshToken = await this.jwtToken.setRefreshToken(userId);
-
-        return {
-            accessToken,
-            refreshToken,
-        };
-    }
 }
