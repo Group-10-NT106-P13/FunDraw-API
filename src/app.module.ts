@@ -13,6 +13,7 @@ import { RedisModule } from '@liaoliaots/nestjs-redis';
 import { UsersService } from './modules/users/users.service';
 import { JWTTokenService } from './modules/jwtToken/jwtToken.service';
 import { UsersController } from './modules/users/users.controller';
+import { MailService } from './modules/mail/mail.service';
 
 @Module({
     imports: [
@@ -36,6 +37,7 @@ import { UsersController } from './modules/users/users.controller';
         JwtService,
         UsersService,
         JWTTokenService,
+        MailService,
     ],
 })
 export class AppModule {}

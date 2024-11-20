@@ -9,6 +9,8 @@ import {
 import { UsersService } from './users.service';
 import { ApiHeader, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { Public } from 'src/decorators/public.decorator';
 
 @Controller('users')
 export class UsersController {
@@ -81,6 +83,20 @@ export class UsersController {
                 accessToken,
                 refreshToken,
             },
+        };
+    }
+
+    @Post('reset-password')
+    @Public()
+    async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+        const { email } = resetPasswordDto;
+
+        await this.usersService.resetPassword(email);
+
+        return {
+            statusCode: 200,
+            message:
+                'Successfully sent reset password link, please check your email',
         };
     }
 }
