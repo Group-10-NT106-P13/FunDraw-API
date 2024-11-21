@@ -25,6 +25,7 @@ jobs:
         with:
           host: ${{ secrets.DEPLOY_IP }}
           username: ${{ secrets.DEPLOY_USERNAME }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             cd ./FunDraw-API
