@@ -31,7 +31,7 @@ jobs:
             cd ./FunDraw-API
             
             echo "HOST=${{ secrets.HOST }}" >> .env
-            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
+            echo "DATABASE_URL=${{ secrets.LOCAL_DATABASE_URL }}" > .env
             echo "REDIS_URL=${{ secrets.REDIS_URL }}" >> .env
             echo "ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}" >> .env
             echo "REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}" >> .env
