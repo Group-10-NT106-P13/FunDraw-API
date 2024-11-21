@@ -29,12 +29,18 @@ jobs:
           script: |
             cd ./FunDraw-API
             
-            echo "DATABASE_URL=${{ secrets.LOCAL_DATABASE_URL }}" > .env
+            echo "HOST=${{ secrets.HOST }}" >> .env
+            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
             echo "REDIS_URL=${{ secrets.REDIS_URL }}" >> .env
             echo "ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}" >> .env
             echo "REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}" >> .env
+            echo "MAIL_HOST=${{ secrets.MAIL_HOST }}" >> .env
+            echo "MAIL_USER=${{ secrets.MAIL_USER }}" >> .env
+            echo "MAIL_SENDAS=${{ secrets.MAIL_SENDAS }}" >> .env
+            echo "MAIL_PASS=${{ secrets.MAIL_PASS }}" >> .env
 
+            git fetch --all
+            git reset --hard origin/main
             git pull
             
-            docker-compose down
             docker-compose up --build -d
