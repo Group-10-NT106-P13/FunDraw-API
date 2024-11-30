@@ -16,6 +16,7 @@ import { UsersController } from './modules/users/users.controller';
 import { MailService } from './modules/mail/mail.service';
 import { ChatGateway } from './gateways/chat/chat.gateway';
 import { GameGateway } from './gateways/game/game.gateway';
+import { GameService } from './gateways/game/game.service';
 
 @Module({
     imports: [
@@ -42,6 +43,7 @@ import { GameGateway } from './gateways/game/game.gateway';
         MailService,
         ChatGateway,
         GameGateway,
+        GameService,
     ],
 })
 export class AppModule {}
