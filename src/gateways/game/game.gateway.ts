@@ -1,109 +1,88 @@
 import {
-    SubscribeMessage,
     WebSocketGateway,
     WebSocketServer,
+    SubscribeMessage,
     OnGatewayConnection,
     OnGatewayDisconnect,
-    WsException,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { GameService } from './game.service';
+import { TurnService } from './turn.service';
 
-@WebSocketGateway({
-    cors: {
-        origin: '*',
-    },
-    transport: ['websocket'],
-    namespace: 'game',
-})
-export class GameGateway {
+@WebSocketGateway()
+export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server: Server;
 
-    constructor(private readonly gameService: GameService) {}
+    constructor(
+        private readonly gameService: GameService,
+        private readonly turnService: TurnService,
+    ) {}
+
+    handleConnection(client: Socket) {
+        console.log(`Client connected: ${client.id}`);
+    }
+
+    handleDisconnect(client: Socket) {
+        console.log(`Client disconnected: ${client.id}`);
+    }
 
     @SubscribeMessage('createRoom')
-    async handleCreateRoom(
-        client: Socket, 
-        payload: RoomSetting
-    ) {
-        // Authorization
-        const token = <string>client.handshake.query.token;
-        const player = await this.userAuthorization(token);
-        if (!player) {
-            client.emit('message', 'Unauthorized');
-            client.disconnect();
-            return;
-        }
-
-        // Create room
-        const roomCode = await this.gameService.createRoom(player, payload);
-        if (!roomCode) {
-            client.emit('message', 'No setting provided');
-            client.disconnect();
-            return;
-        }
-        client.join(roomCode);
-        console.log(player.username + ' created room: ' + roomCode);
+    handleCreateRoom(client: Socket) {
+        const roomId: string = this.gameService.generateLobbyCode();
+        const room = this.gameService.createRoom(client.id, roomId);
+        client.join(roomId);
+        client.emit('roomCreated', { roomId, room });
     }
 
-    @SubscribeMessage('hostStartGame')
-    async handleHostStartGame(
+    @SubscribeMessage('modifyRoom')
+    handleModifyRoom(
         client: Socket,
-        roomCode: string
+        {
+            roomId,
+            playersCount,
+            drawTime,
+            roundsCount,
+            wordsCount,
+            hintsCount,
+            customWords,
+        }: {
+            roomId: string;
+            playersCount: number;
+            drawTime: number;
+            roundsCount: number;
+            wordsCount: number;
+            hintsCount: number;
+            customWords: string[];
+        },
     ) {
-        // Authorization
-        const token = <string>client.handshake.query.token;
-        const player = await this.userAuthorization(token);
-        if (!player) {
-            client.emit('message', 'Unauthorized');
-            client.disconnect();
-            return;
-        }
-
-        // Start game
-        const result = await this.gameService.hostStartGame(player, roomCode);
-        if (!result) {
-            client.emit('message', 'Room not found');
-            client.disconnect();
-            return;
-        }
-        console.log(player.username + ' started game in room: ' + roomCode);
-    }
-
-    @SubscribeMessage('joinRoom')
-    handleJoinRoom(client: Socket, room: string): void {
-        
-    }
-
-    @SubscribeMessage('leaveRoom')
-    handleLeaveRoom(client: Socket, room: string): void {
-        client.leave(room);
-        console.log(`Client ${client.id} left room: ${room}`);
-        this.server
-            .to(room)
-            .emit('notification', `User ${client.id} has left room: ${room}`);
-    }
-
-    @SubscribeMessage('message')
-    handleMessage(
-        client: Socket,
-        payload: { room: string; sender: string; message: string },
-    ): void {
-        console.log(
-            `Message from ${payload.sender} in room ${payload.room}: ${payload.message}`,
-        );
-        this.server.to(payload.room).emit('message', {
-            sender: payload.sender,
-            message: payload.message,
+        const modify = this.gameService.modifyRoom(roomId, {
+            playersCount,
+            totalRounds: roundsCount,
+            turnDuration: drawTime,
+            wordsCount,
+            hintsCount,
+            customWords,
         });
+
+        if (!modify) {
+            client.emit('error', { message: 'Room not found!' });
+            return;
+        }
+
+        client.emit('roomModifed', { roomId });
     }
 
-    async userAuthorization(token: string): Promise<Player | null> {
-        const result = await this.gameService.userAuthorization(token);
-        if (result == "unauthorized") 
-            return null;
-        const { id, username, avatar } = result;
-        return { id, username, avatar };
+    @SubscribeMessage('startGame')
+    handleStartGame(client: Socket, { roomId }: { roomId: string }) {
+        const room = this.gameService.getRoom(roomId);
+        if (!room) return;
+
+        if (room.state !== 'waiting') {
+            client.emit('error', { message: 'Game already started!' });
+            return;
+        }
+
+        this.turnService.startGame(roomId, this.server);
     }
 }

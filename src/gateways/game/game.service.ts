@@ -1,86 +1,104 @@
-import { RedisService } from "@liaoliaots/nestjs-redis";
-import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { WsException } from "@nestjs/websockets";
-import Redis from "ioredis";
-import { JWTTokenService } from "src/modules/jwtToken/jwtToken.service";
-import { PrismaService } from "src/modules/prisma/prisma.service";
-import { UsersService } from "src/modules/users/users.service";
+import { RedisService } from '@liaoliaots/nestjs-redis';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { WsException } from '@nestjs/websockets';
+import Redis from 'ioredis';
+import { JWTTokenService } from 'src/modules/jwtToken/jwtToken.service';
+import { PrismaService } from 'src/modules/prisma/prisma.service';
+import { UsersService } from 'src/modules/users/users.service';
 
 @Injectable()
 export class GameService {
-    private readonly redis: Redis | null;
+    private rooms: Map<
+        string,
+        {
+            host: string;
+            playersCount: number;
+            players: string[];
+            currentPlayerIndex: number;
+            currentRound: number;
+            totalRounds: number;
+            wordsCount: number;
+            hintsCount: number;
+            turnTimer: NodeJS.Timeout | null;
+            turnDuration: number;
+            words: string[];
+            currentWord: string | null;
+            state: RoomState;
+        }
+    > = new Map();
 
-    constructor(
-        private prisma: PrismaService,
-        private jwtToken: JWTTokenService,
-        private usersService: UsersService,
-        private readonly redisService: RedisService,
-    ) {
-        this.redis = this.redisService.getOrThrow();
-    }
-
-    async createRoom(host: Player, setting: RoomSetting) {
-        if (!setting) return null;
-        const roomCode = this.generateRoomCode();
-        setting.host = host;
-        const room: Room = {
-            state: 'waiting',
-            setting,
-            players: [ host ],
-            round: -1,
-            endRoundTime: -1,
-            drawer: null,
-            drawers: [],
+    createRoom(host: string, roomId: string) {
+        this.rooms.set(roomId, {
+            host: host,
+            playersCount: 8,
+            players: [host],
+            currentPlayerIndex: 0,
+            currentRound: 1,
+            totalRounds: 3,
+            wordsCount: 3,
+            hintsCount: 2,
+            turnTimer: null,
+            turnDuration: 120,
+            words: ['apple', 'banana', 'cherry'],
             currentWord: null,
-            hints: setting.hints,
-            scores: [ { id: host.id, score: 0 }],
-        }
+            state: 'waiting',
+        });
 
-        await this.redis?.set(`gameLobby:${roomCode}`, JSON.stringify(room));
-        return roomCode;
+        return this.getRoom(roomId);
     }
 
-    async hostStartGame(host: Player, roomCode: string) {  
-        const room = await this.redis?.get(`gameLobby:${roomCode}`);
-        if (!room) {
-            throw new WsException('Room not found');
-        }
-        const roomData = JSON.parse(room);
-
-        if (roomData.setting.host.id !== host.id) {
-            throw new WsException('Unauthorized');
-        }
-
-        roomData.state = 'changing_round';
-        roomData.round = 1;
-        roomData.endRoundTime = Date.now() + roomData.setting.rounds * roomData.setting.drawTime * 1000;
-        roomData.drawer = roomData.players[0];
-        roomData.currentWord = roomData.setting.words ? roomData.setting.words[0] : null;
-        roomData.hints = roomData.setting.hints;
-        roomData.scores = roomData.players.map((player: Player) => ({ id: player.id, score: 0 }));
-
-        await this.redis?.set(`gameLobby:${roomCode}`, JSON.stringify(room));
-        return room;
+    getRoom(roomId: string) {
+        return this.rooms.get(roomId);
     }
 
-    private generateRoomCode(): string {
-        const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        return Array.from({ length: 8 }, () => characters[Math.floor(Math.random() * characters.length)]).join('');
+    modifyRoom(
+        roomId: string,
+        changes: Partial<{
+            playersCount: number;
+            totalRounds: number;
+            turnDuration: number;
+            wordsCount: number;
+            hintsCount: number;
+            customWords: string[];
+        }>,
+    ): boolean {
+        const room = this.rooms.get(roomId);
+        if (!room) return false;
+
+        if (changes.playersCount) room.playersCount = changes.playersCount;
+        if (changes.totalRounds) room.totalRounds = changes.totalRounds;
+        if (changes.turnDuration) room.turnDuration = changes.turnDuration;
+        if (changes.customWords) room.words = changes.customWords;
+        if (changes.wordsCount) room.wordsCount = changes.wordsCount;
+        if (changes.hintsCount) room.hintsCount = changes.hintsCount;
+
+        return true;
     }
 
-    async userAuthorization(token: string) {
-        const id = await this.redis?.get(`accessToken:${token}`);
-
-        if (!id) {
-            return "unauthorized";
-        }
-
-        const user = await this.usersService.findById(id);
-
-        if (!user) {
-            return "unauthorized";
-        }
-
-        return user;
+    updatePlayerList(roomId: string, players: string[]) {
+        const room = this.rooms.get(roomId);
+        if (!room) return false;
     }
+
+    updateRoomState(roomId: string, newState: RoomState) {
+        const room = this.rooms.get(roomId);
+        if (room) {
+            room.state = newState;
+        }
+    }
+
+    deleteRoom(roomId: string) {
+        const room = this.rooms.get(roomId);
+        if (room?.turnTimer) {
+            clearTimeout(room.turnTimer);
+        }
+        this.rooms.delete(roomId);
+    }
+
+    generateLobbyCode = () =>
+        Array.from({ length: 8 }, () =>
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.charAt(
+                Math.floor(Math.random() * 36),
+            ),
+        ).join('');
 }
