@@ -9,7 +9,14 @@ import { Server, Socket } from 'socket.io';
 import { GameService } from './game.service';
 import { TurnService } from './turn.service';
 
-@WebSocketGateway()
+@WebSocketGateway({
+    cors: {
+        origin: '*',
+    },
+    transport: ['websocket'],
+    namespace: 'game',
+})
+// @UseGuards(WsAuthGuard)
 export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server: Server;
@@ -27,15 +34,52 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         console.log(`Client disconnected: ${client.id}`);
     }
 
-    @SubscribeMessage('createRoom')
+    @SubscribeMessage('createTestRoom')
+    handleCreateTestRoom(client: Socket) {
+        const roomId: string = this.gameService.generateLobbyCode();
+        this.gameService.createTestRoom(roomId);
+        client.join(roomId);
+        client.emit('roomCreated', roomId);
+        console.log('Test Room Created: ', roomId);
+    }
+
+    @SubscribeMessage('joinTestRoom')
+    handleJoinTestRoom(client: Socket, { roomId }: { roomId: string }) {
+        const room = this.gameService.getTestRoom(roomId);
+        if (!room) {
+            client.emit('error', { message: 'Room not found!' });
+            return;
+        }
+
+        client.join(roomId);
+        client.emit('roomJoined', roomId);
+        this.server.to(roomId).emit('playerJoined', client.id);
+    }
+
+    @SubscribeMessage('eventUpdateTest')
+    handleEventUpdateTest(
+        client: Socket,
+        { roomId, event }: { roomId: string; event: string },
+    ) {
+        const room = this.gameService.getTestRoom(roomId);
+        if (!room) {
+            client.emit('error', { message: 'Room not found!' });
+            return;
+        }
+        this.gameService.updateTestEvent(roomId, event);
+        this.server.to(roomId).emit('eventUpdated', event);
+    }
+
+    // @SubscribeMessage('createRoom')
     handleCreateRoom(client: Socket) {
         const roomId: string = this.gameService.generateLobbyCode();
         const room = this.gameService.createRoom(client.id, roomId);
         client.join(roomId);
-        client.emit('roomCreated', { roomId, room });
+        client.emit('roomCreated', JSON.stringify({ roomId, room }));
+        console.log('Room Created:', roomId);
     }
 
-    @SubscribeMessage('modifyRoom')
+    // @SubscribeMessage('modifyRoom')
     handleModifyRoom(
         client: Socket,
         {
@@ -73,7 +117,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.emit('roomModifed', { roomId });
     }
 
-    @SubscribeMessage('startGame')
+    // @SubscribeMessage('startGame')
     handleStartGame(client: Socket, { roomId }: { roomId: string }) {
         const room = this.gameService.getRoom(roomId);
         if (!room) return;
@@ -84,5 +128,20 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
 
         this.turnService.startGame(roomId, this.server);
+    }
+
+    // @SubscribeMessage('joinRoom')
+    handleJoinRoom(client: Socket, { roomId }: { roomId: string }) {
+        const room = this.gameService.getRoom(roomId);
+        if (!room) {
+            client.emit('error', { message: 'Room not found!' });
+            return;
+        }
+
+        this.gameService.updatePlayerList(roomId, client.id);
+
+        client.join(roomId);
+        client.emit('roomJoined', JSON.stringify({ roomId, room }));
+        this.server.to(roomId).emit('playerJoined', client.id);
     }
 }

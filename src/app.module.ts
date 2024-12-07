@@ -17,6 +17,7 @@ import { MailService } from './modules/mail/mail.service';
 import { ChatGateway } from './gateways/chat/chat.gateway';
 import { GameGateway } from './gateways/game/game.gateway';
 import { GameService } from './gateways/game/game.service';
+import { TurnService } from './gateways/game/turn.service';
 
 @Module({
     imports: [
@@ -44,6 +45,7 @@ import { GameService } from './gateways/game/game.service';
         ChatGateway,
         GameGateway,
         GameService,
+        TurnService,
     ],
 })
 export class AppModule {}

@@ -1,10 +1,4 @@
-import { RedisService } from '@liaoliaots/nestjs-redis';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { WsException } from '@nestjs/websockets';
-import Redis from 'ioredis';
-import { JWTTokenService } from 'src/modules/jwtToken/jwtToken.service';
-import { PrismaService } from 'src/modules/prisma/prisma.service';
-import { UsersService } from 'src/modules/users/users.service';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class GameService {
@@ -23,9 +17,28 @@ export class GameService {
             turnDuration: number;
             words: string[];
             currentWord: string | null;
-            state: RoomState;
+            state: 'waiting' | 'playing' | 'changing_round' | 'end';
         }
     > = new Map();
+
+    private testRooms: Map<string, { event: string }> = new Map();
+
+    createTestRoom(roomId: string) {
+        this.testRooms.set(roomId, { event: '' });
+        return this.getTestRoom(roomId);
+    }
+
+    getTestRoom(roomId: string) {
+        return this.testRooms.get(roomId);
+    }
+
+    updateTestEvent(roomId: string, event: string) {
+        const room = this.testRooms.get(roomId);
+        if (!room) return false;
+
+        room.event = event;
+        return true;
+    }
 
     createRoom(host: string, roomId: string) {
         this.rooms.set(roomId, {
@@ -39,7 +52,7 @@ export class GameService {
             hintsCount: 2,
             turnTimer: null,
             turnDuration: 120,
-            words: ['apple', 'banana', 'cherry'],
+            words: [],
             currentWord: null,
             state: 'waiting',
         });
@@ -75,12 +88,18 @@ export class GameService {
         return true;
     }
 
-    updatePlayerList(roomId: string, players: string[]) {
+    updatePlayerList(roomId: string, player: string) {
         const room = this.rooms.get(roomId);
         if (!room) return false;
+
+        room.players.push(player);
+        return true;
     }
 
-    updateRoomState(roomId: string, newState: RoomState) {
+    updateRoomState(
+        roomId: string,
+        newState: 'waiting' | 'playing' | 'changing_round' | 'end',
+    ) {
         const room = this.rooms.get(roomId);
         if (room) {
             room.state = newState;
