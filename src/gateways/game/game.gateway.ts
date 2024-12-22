@@ -8,6 +8,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { GameService } from './game.service';
 import { TurnService } from './turn.service';
+import { PayloadEvent } from './game.payload';
 
 @WebSocketGateway({
     cors: {
@@ -30,57 +31,28 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         console.log(`Client connected: ${client.id}`);
     }
 
-    handleDisconnect(client: Socket) {
-        console.log(`Client disconnected: ${client.id}`);
-    }
-
-    @SubscribeMessage('createTestRoom')
-    handleCreateTestRoom(client: Socket) {
-        const roomId: string = this.gameService.generateLobbyCode();
-        this.gameService.createTestRoom(roomId);
-        client.join(roomId);
-        client.emit('roomCreated', roomId);
-        console.log('Test Room Created: ', roomId);
-    }
-
-    @SubscribeMessage('joinTestRoom')
-    handleJoinTestRoom(client: Socket, { roomId }: { roomId: string }) {
-        const room = this.gameService.getTestRoom(roomId);
-        if (!room) {
-            client.emit('error', { message: 'Room not found!' });
-            return;
+    async handleDisconnect(client: Socket) {
+        const room = await this.gameService.getPlayerRoomOnDisconnect(
+            client.id,
+        );
+        if (room) {
+            await this.gameService.removePlayer(room.id, client.id);
+            this.server.to(room.id).emit('playerList', room.players.join(','));
         }
-
-        client.join(roomId);
-        client.emit('roomJoined', roomId);
-        this.server.to(roomId).emit('playerJoined', client.id);
+        console.log(`Client ${client.id} disconnected`);
     }
 
-    @SubscribeMessage('eventUpdateTest')
-    handleEventUpdateTest(
-        client: Socket,
-        { roomId, event }: { roomId: string; event: string },
-    ) {
-        const room = this.gameService.getTestRoom(roomId);
-        if (!room) {
-            client.emit('error', { message: 'Room not found!' });
-            return;
-        }
-        this.gameService.updateTestEvent(roomId, event);
-        this.server.to(roomId).emit('eventUpdated', event);
-    }
-
-    // @SubscribeMessage('createRoom')
+    @SubscribeMessage('createRoom')
     handleCreateRoom(client: Socket) {
         const roomId: string = this.gameService.generateLobbyCode();
-        const room = this.gameService.createRoom(client.id, roomId);
+        const room = this.gameService.createRoom(client, roomId);
         client.join(roomId);
-        client.emit('roomCreated', JSON.stringify({ roomId, room }));
+        client.emit('roomCreated', JSON.stringify(room));
         console.log('Room Created:', roomId);
     }
 
-    // @SubscribeMessage('modifyRoom')
-    handleModifyRoom(
+    @SubscribeMessage('startGame')
+    handleStartGame(
         client: Socket,
         {
             roomId,
@@ -89,7 +61,6 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             roundsCount,
             wordsCount,
             hintsCount,
-            customWords,
         }: {
             roomId: string;
             playersCount: number;
@@ -97,51 +68,145 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             roundsCount: number;
             wordsCount: number;
             hintsCount: number;
-            customWords: string[];
         },
     ) {
-        const modify = this.gameService.modifyRoom(roomId, {
+        const room = this.gameService.getRoom(roomId);
+        if (!room) {
+            client.emit('startGame', { error: 'Room not found!' });
+            return;
+        }
+
+        if (room.state !== 'waiting') {
+            client.emit('startGame', { error: 'Room not found!' });
+            return;
+        }
+
+        this.gameService.modifyRoom(roomId, {
             playersCount,
             totalRounds: roundsCount,
             turnDuration: drawTime,
             wordsCount,
             hintsCount,
-            customWords,
         });
 
-        if (!modify) {
-            client.emit('error', { message: 'Room not found!' });
-            return;
-        }
+        this.server
+            .to(roomId)
+            .emit('startGame', JSON.stringify({ status: 'changing_round' }));
 
-        client.emit('roomModifed', { roomId });
+        console.log('Game started:', roomId);
+
+        setTimeout(() => {
+            this.turnService.startRound(roomId, this.server);
+        }, 1000);
     }
 
-    // @SubscribeMessage('startGame')
-    handleStartGame(client: Socket, { roomId }: { roomId: string }) {
-        const room = this.gameService.getRoom(roomId);
-        if (!room) return;
-
-        if (room.state !== 'waiting') {
-            client.emit('error', { message: 'Game already started!' });
-            return;
-        }
-
-        this.turnService.startGame(roomId, this.server);
-    }
-
-    // @SubscribeMessage('joinRoom')
-    handleJoinRoom(client: Socket, { roomId }: { roomId: string }) {
+    @SubscribeMessage('chooseWord')
+    handleChooseWord(
+        client: Socket,
+        { roomId, word }: { roomId: string; word: string },
+    ) {
         const room = this.gameService.getRoom(roomId);
         if (!room) {
-            client.emit('error', { message: 'Room not found!' });
+            client.emit('chooseWord', { error: 'Room not found!' });
+            return;
+        }
+        if (room.state !== 'changing_round') {
+            client.emit('chooseWord', { error: 'Not selecting word!' });
+            return;
+        }
+        if (!this.turnService.awaitSelectWords.includes(word)) {
+            client.emit('chooseWord', { error: 'Not in word selection list!' });
             return;
         }
 
-        this.gameService.updatePlayerList(roomId, client.id);
+        room.currentWord = word;
+        this.server.to(client.id).emit('chooseWord', 'word_selected');
+        this.turnService.startTurn(roomId, this.server);
+    }
+
+    @SubscribeMessage('roomInfo')
+    handleRoomInfo(client: Socket, { roomId }: { roomId: string }) {
+        const room = this.gameService.getRoom(roomId);
+        if (!room) {
+            client.emit(
+                'roomInfo',
+                JSON.stringify({ error: 'Room not found!' }),
+            );
+            return;
+        }
+
+        client.emit('roomInfo', JSON.stringify(room));
+    }
+
+    @SubscribeMessage('joinRoom')
+    async handleJoinRoom(client: Socket, { roomId }: { roomId: string }) {
+        const room = this.gameService.getRoom(roomId);
+        if (!room) {
+            client.emit(
+                'joinRoom',
+                JSON.stringify({ error: 'Room not found!' }),
+            );
+            console.log(`Room not found: ${roomId}`);
+            return;
+        }
+
+        await this.gameService.addPlayer(roomId, client.id);
 
         client.join(roomId);
-        client.emit('roomJoined', JSON.stringify({ roomId, room }));
-        this.server.to(roomId).emit('playerJoined', client.id);
+        client.emit('joinRoom', JSON.stringify(room));
+        this.server.to(roomId).emit('playerList', room.players.join(','));
+    }
+
+    @SubscribeMessage('drawEvent')
+    handleDrawData(
+        client: Socket,
+        { roomId, payload }: { roomId: string; payload: PayloadEvent },
+    ) {
+        const room = this.gameService.getRoom(roomId);
+        if (!room) {
+            client.emit(
+                'drawEvent',
+                JSON.stringify({ error: 'Room not found!' }),
+            );
+            return;
+        }
+
+        if (room.state !== 'playing') {
+            client.emit('drawEvent', JSON.stringify({ error: 'Not drawing!' }));
+            return;
+        }
+
+        console.log(roomId, 'draw event', payload);
+        this.server.to(roomId).emit('drawEvent', JSON.stringify(payload));
+    }
+
+    @SubscribeMessage('playerList')
+    handlePlayerList(client: Socket, { roomId }: { roomId: string }) {
+        const room = this.gameService.getRoom(roomId);
+        if (!room) {
+            client.emit(
+                'playerList',
+                JSON.stringify({ error: 'Room not found!' }),
+            );
+            console.log(`Room not found: ${roomId}`);
+            return;
+        }
+
+        client.emit('playerList', room.players.join(','));
+    }
+
+    @SubscribeMessage('playerScore')
+    handlePlayerScore(client: Socket, { roomId }: { roomId: string }) {
+        const room = this.gameService.getRoom(roomId);
+        if (!room) {
+            client.emit(
+                'playerList',
+                JSON.stringify({ error: 'Room not found!' }),
+            );
+            console.log(`Room not found: ${roomId}`);
+            return;
+        }
+
+        client.emit('playerScore', room.players.join(','));
     }
 }

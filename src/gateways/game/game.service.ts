@@ -1,14 +1,24 @@
+import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Injectable } from '@nestjs/common';
+import Redis from 'ioredis';
+import { Socket } from 'socket.io';
+import { wordsList } from './game.payload';
 
 @Injectable()
 export class GameService {
+    private readonly redis: Redis | null;
+
+    constructor(private readonly redisService: RedisService) {
+        this.redis = this.redisService.getOrThrow();
+    }
+
     private rooms: Map<
         string,
         {
+            id: string;
             host: string;
             playersCount: number;
             players: string[];
-            currentPlayerIndex: number;
             currentRound: number;
             totalRounds: number;
             wordsCount: number;
@@ -21,38 +31,20 @@ export class GameService {
         }
     > = new Map();
 
-    private testRooms: Map<string, { event: string }> = new Map();
-
-    createTestRoom(roomId: string) {
-        this.testRooms.set(roomId, { event: '' });
-        return this.getTestRoom(roomId);
-    }
-
-    getTestRoom(roomId: string) {
-        return this.testRooms.get(roomId);
-    }
-
-    updateTestEvent(roomId: string, event: string) {
-        const room = this.testRooms.get(roomId);
-        if (!room) return false;
-
-        room.event = event;
-        return true;
-    }
-
-    createRoom(host: string, roomId: string) {
+    createRoom(host: Socket, roomId: string) {
+        if (!host.id) return null;
         this.rooms.set(roomId, {
-            host: host,
+            id: roomId,
+            host: host.id,
             playersCount: 8,
-            players: [host],
-            currentPlayerIndex: 0,
+            players: [host.id],
             currentRound: 1,
             totalRounds: 3,
             wordsCount: 3,
             hintsCount: 2,
             turnTimer: null,
             turnDuration: 120,
-            words: [],
+            words: wordsList,
             currentWord: null,
             state: 'waiting',
         });
@@ -72,7 +64,7 @@ export class GameService {
             turnDuration: number;
             wordsCount: number;
             hintsCount: number;
-            customWords: string[];
+            // customWords: string[];
         }>,
     ): boolean {
         const room = this.rooms.get(roomId);
@@ -81,18 +73,27 @@ export class GameService {
         if (changes.playersCount) room.playersCount = changes.playersCount;
         if (changes.totalRounds) room.totalRounds = changes.totalRounds;
         if (changes.turnDuration) room.turnDuration = changes.turnDuration;
-        if (changes.customWords) room.words = changes.customWords;
+        // if (changes.customWords) room.words = changes.customWords;
         if (changes.wordsCount) room.wordsCount = changes.wordsCount;
         if (changes.hintsCount) room.hintsCount = changes.hintsCount;
 
         return true;
     }
 
-    updatePlayerList(roomId: string, player: string) {
+    async addPlayer(roomId: string, player: string) {
         const room = this.rooms.get(roomId);
         if (!room) return false;
 
         room.players.push(player);
+        await this.redis?.set(`playerRoom:${player}`, roomId);
+        return true;
+    }
+
+    async removePlayer(roomId: string, player: string) {
+        const room = await this.rooms.get(roomId);
+        if (!room) return false;
+
+        room.players = room.players.filter((p) => p !== player);
         return true;
     }
 
@@ -112,6 +113,14 @@ export class GameService {
             clearTimeout(room.turnTimer);
         }
         this.rooms.delete(roomId);
+    }
+
+    async getPlayerRoomOnDisconnect(player: string) {
+        const roomId = await this.redis?.get(`playerRoom:${player}`);
+        if (!roomId) return null;
+        const room = this.rooms.get(roomId);
+        if (!room) return null;
+        return room;
     }
 
     generateLobbyCode = () =>
