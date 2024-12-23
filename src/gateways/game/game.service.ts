@@ -42,7 +42,7 @@ export class GameService {
             id: roomId,
             host: host.id,
             playersCount: 8,
-            players: [{ id: host.id, score: 0 }],
+            players: [],
             currentRound: 0,
             totalRounds: 3,
             wordsCount: 3,
@@ -99,6 +99,10 @@ export class GameService {
         if (!room) return false;
 
         room.players = room.players.filter((p) => p.id !== player);
+        if (room.players.length === 0) {
+            this.deleteRoom(roomId);
+            console.log(roomId, 'deleted due to not having any players.');
+        }
         return true;
     }
 
@@ -130,7 +134,7 @@ export class GameService {
     async getPlayerRoomOnDisconnect(player: string) {
         const roomId = await this.redis?.get(`playerRoom:${player}`);
         if (!roomId) return null;
-        const room = this.rooms.get(roomId);
+        const room = this.getRoom(roomId);
         if (!room) return null;
         return room;
     }

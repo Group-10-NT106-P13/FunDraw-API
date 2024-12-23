@@ -25,14 +25,10 @@ export class TurnService {
             this.endGame(roomId, server);
             return;
         }
-        
-        this.roomService.updateRoomState(roomId, 'changing_turn');
 
         const playerTurns = room.players.map((player) => player.id);
         this.turns.set(roomId, playerTurns);
-        this.guessedPlayer.set(roomId, []);
-
-        server.to(roomId).emit('gameState', room.state);
+        this.guessedPlayer.set(roomId, []);;
 
         this.changeTurn(roomId, server);
     }
@@ -65,11 +61,11 @@ export class TurnService {
         const words = this.getRandomWords(room.words, room.wordsCount);
         this.awaitSelectWords = words;
 
-        server.to(drawer).emit('chooseWord', { drawer: '#you', words, timeLeft: Date.now() + 15 * 1000 });
+        server.to(drawer).emit('chooseWord', { drawer: '#you', words, timeLeft: Date.now() + 15 * 1000, round: room.currentRound, totalRounds: room.totalRounds });
 
         room.players.forEach((player) => {
             if (player.id == drawer) return;
-            server.to(player.id).emit('chooseWord', { drawer, timeLeft: Date.now() + 15 * 1000 });
+            server.to(player.id).emit('chooseWord', { drawer, timeLeft: Date.now() + 15 * 1000, round: room.currentRound, totalRounds: room.totalRounds });
         });
 
         console.log(roomId, drawer, 'choosing a word...');
@@ -79,7 +75,12 @@ export class TurnService {
             setTimeout(() => {
                 if (!room.currentWord) {
                     room.currentWord = this.getRandomWords(words, 1)[0];
-                    server.to(drawer).emit('chooseWord', { state: 'you-selected' });
+                    server.to(drawer).emit('chooseWord', { state: 'you-selected', round: room.currentRound, totalRounds: room.totalRounds });
+                    room.players.forEach((player) => {
+                        if (player.id === drawer) return;
+                        console.log(roomId, 'word selected:', room.currentWord);
+                        server.to(player.id).emit('chooseWord', { state: 'selected', round: room.currentRound, totalRounds: room.totalRounds });
+                    });
                 }
                 this.startTurn(roomId, server);
             }, 15 * 1000),
@@ -118,13 +119,11 @@ export class TurnService {
 
             room.players.forEach((player) => {
                 if (this.guessedPlayer.get(roomId)?.includes(player.id)) return;
-                server.to(player.id).emit('gameProgress', { state: 'playing', timeLeft: timeLeft, word: word.join('  ') });
+                server.to(player.id).emit('gameProgress', { state: 'playing', timeLeft: timeLeft, word: word.join('') });
             });
             this.guessedPlayer.get(roomId)?.forEach((player) => {
-                server.to(player).emit('gameProgress', { state: 'playing', timeLeft: timeLeft, word: room.currentWord?.split("").join("  ") });
-            });
-            
-            console.log(roomId,'time left', timeLeft);
+                server.to(player).emit('gameProgress', { state: 'playing', timeLeft: timeLeft, word: room.currentWord });
+            });           
         }, 1000);
     }
 
@@ -134,6 +133,11 @@ export class TurnService {
         if (word == room.currentWord) {
             this.guessedPlayer.get(roomId)?.push(playerId);
             this.calculateScores(roomId, server, playerId);
+            this.reduceTime(roomId);
+
+            if (this.guessedPlayer.get(roomId)?.length == room.players.length) {
+                this.endTurn(roomId, server);
+            }
             return true;
         }
         return false;
@@ -144,9 +148,12 @@ export class TurnService {
         if (!room) return;
 
         room.state = 'end_turn';
+        if (room.turnTimer) {
+            clearInterval(room.turnTimer);
+        }
 
         server.to(roomId).emit('gameProgress', { state: room.state, word: room.currentWord });
-        console.log("end turn!");
+        console.log(roomId, 'turn ended');
 
         setTimeout(() => {
             if (room.turnTimer) {
@@ -162,12 +169,27 @@ export class TurnService {
 
         room.state = 'ending';
         server.to(roomId).emit('gameProgress', { state: room.state, players: room.players.sort((a, b) => b.score - a.score) });
+        console.log(roomId,'game ended');
 
         setTimeout(() => {
             room.state = 'end';
             server.to(roomId).emit('gameProgress', { state: room.state });
             this.roomService.deleteRoom(roomId);
         }, 15 * 1000)
+    }
+
+    reduceTime(roomId: string) {
+        const room = this.roomService.getRoom(roomId);
+        if (!room) return;
+
+        const _nextTurnTime = this.nextTurnTime.get(roomId)??null;
+        if (!_nextTurnTime) return;
+
+        const timeLeft = _nextTurnTime - Date.now();
+        const reducedTime = timeLeft * 3 / 4;
+        if (reducedTime <= 30) return;
+
+        this.nextTurnTime.set(roomId, Date.now() + reducedTime);
     }
 
     calculateScores(roomId: string, server: Server, player: string) {

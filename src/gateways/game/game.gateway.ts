@@ -36,16 +36,23 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             client.id,
         );
         if (room) {
+            if (room.state == "waiting" && room.host == client.id) {
+                console.log(room.id, 'was deleted because host left the room');
+                this.server.to(room.id).emit('roomClosed', "Host left the room");
+                this.gameService.deleteRoom(room.id);
+                return;
+            };
             await this.gameService.removePlayer(room.id, client.id);
-            this.server.to(room.id).emit('playerList', room.players.join(','));
+            this.server.to(room.id).emit('playerList', room.players);
         }
         console.log(`Client ${client.id} disconnected`);
     }
 
     @SubscribeMessage('createRoom')
-    handleCreateRoom(client: Socket) {
+    async handleCreateRoom(client: Socket) {
         const roomId: string = this.gameService.generateLobbyCode();
-        const room = this.gameService.createRoom(client, roomId);
+        const room = this.gameService.createRoom(client, roomId);      
+        await this.gameService.addPlayer(roomId, client.id);
         client.join(roomId);
         client.emit('roomCreated', JSON.stringify(room));
         console.log('Room Created:', roomId);
