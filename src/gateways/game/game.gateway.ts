@@ -110,7 +110,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             client.emit('chooseWord', { error: 'Room not found!' });
             return;
         }
-        if (room.state !== 'changing_round') {
+        if (room.state !== 'changing_turn') {
             client.emit('chooseWord', { error: 'Not selecting word!' });
             return;
         }
@@ -118,9 +118,19 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             client.emit('chooseWord', { error: 'Not in word selection list!' });
             return;
         }
+        if (this.turnService.currentDrawer.get(roomId) !== client.id) {
+            client.emit('chooseWord', { error: 'You are not the drawer!' });
+            return;
+        }
 
         room.currentWord = word;
-        this.server.to(client.id).emit('chooseWord', 'word_selected');
+        console.log(roomId, 'word selected:', room.currentWord);
+        this.server.to(client.id).emit('chooseWord', { state: 'you-selected' });
+        room.players.forEach((player) => {
+            if (player.id === client.id) return;
+            this.server.to(player.id).emit('chooseWord', { state: 'selected' });
+        });
+
         this.turnService.startTurn(roomId, this.server);
     }
 
@@ -154,7 +164,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         client.join(roomId);
         client.emit('joinRoom', JSON.stringify(room));
-        this.server.to(roomId).emit('playerList', room.players.join(','));
+        this.server.to(roomId).emit('playerList', room.players);
     }
 
     @SubscribeMessage('drawEvent')
@@ -176,7 +186,6 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             return;
         }
 
-        console.log(roomId, 'draw event', payload);
         this.server.to(roomId).emit('drawEvent', JSON.stringify(payload));
     }
 
@@ -192,21 +201,31 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             return;
         }
 
-        client.emit('playerList', room.players.join(','));
+        client.emit('playerList', room.players);
     }
 
-    @SubscribeMessage('playerScore')
-    handlePlayerScore(client: Socket, { roomId }: { roomId: string }) {
+    @SubscribeMessage('chatMessage')
+    handleChatMessage(client: Socket, { roomId, message }: { roomId: string; message: string }) {
         const room = this.gameService.getRoom(roomId);
         if (!room) {
-            client.emit(
-                'playerList',
-                JSON.stringify({ error: 'Room not found!' }),
-            );
-            console.log(`Room not found: ${roomId}`);
+            client.emit('chatMessage', JSON.stringify({ error: 'Room not found!' }));
             return;
         }
 
-        client.emit('playerScore', room.players.join(','));
+        if (room.state == 'playing') {
+            const guessedPlayer = this.turnService.guessedPlayer.get(roomId);
+            if (guessedPlayer?.includes(client.id)) {        
+                guessedPlayer.forEach(player => {
+                    this.server.to(player).emit('chatGuessed', JSON.stringify({ message, sender: client.id }))
+                });
+                return;
+            }
+            if (this.turnService.answerHandler(roomId, this.server, client.id, message)) {        
+                this.server.to(roomId).emit('chatGuessed', JSON.stringify({ message: "guessed", sender: client.id }));
+                return;
+            }
+        }
+
+        this.server.to(roomId).emit('chatMessage', JSON.stringify({ message, sender: client.id }));
     }
 }

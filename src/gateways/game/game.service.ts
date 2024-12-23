@@ -1,14 +1,16 @@
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
-import { Socket } from 'socket.io';
-import { wordsList } from './game.payload';
+import { Server, Socket } from 'socket.io';
+import { GameState, wordsList } from './game.payload';
 
 @Injectable()
 export class GameService {
     private readonly redis: Redis | null;
 
-    constructor(private readonly redisService: RedisService) {
+    constructor(
+        private readonly redisService: RedisService,
+    ) {
         this.redis = this.redisService.getOrThrow();
     }
 
@@ -18,7 +20,10 @@ export class GameService {
             id: string;
             host: string;
             playersCount: number;
-            players: string[];
+            players: {
+                id: string;
+                score: number;
+            }[];
             currentRound: number;
             totalRounds: number;
             wordsCount: number;
@@ -27,7 +32,7 @@ export class GameService {
             turnDuration: number;
             words: string[];
             currentWord: string | null;
-            state: 'waiting' | 'playing' | 'changing_round' | 'end';
+            state: GameState;
         }
     > = new Map();
 
@@ -37,8 +42,8 @@ export class GameService {
             id: roomId,
             host: host.id,
             playersCount: 8,
-            players: [host.id],
-            currentRound: 1,
+            players: [{ id: host.id, score: 0 }],
+            currentRound: 0,
             totalRounds: 3,
             wordsCount: 3,
             hintsCount: 2,
@@ -76,7 +81,7 @@ export class GameService {
         // if (changes.customWords) room.words = changes.customWords;
         if (changes.wordsCount) room.wordsCount = changes.wordsCount;
         if (changes.hintsCount) room.hintsCount = changes.hintsCount;
-
+        
         return true;
     }
 
@@ -84,7 +89,7 @@ export class GameService {
         const room = this.rooms.get(roomId);
         if (!room) return false;
 
-        room.players.push(player);
+        room.players.push({ id: player, score: 0 });
         await this.redis?.set(`playerRoom:${player}`, roomId);
         return true;
     }
@@ -93,17 +98,24 @@ export class GameService {
         const room = await this.rooms.get(roomId);
         if (!room) return false;
 
-        room.players = room.players.filter((p) => p !== player);
+        room.players = room.players.filter((p) => p.id !== player);
         return true;
     }
 
     updateRoomState(
         roomId: string,
-        newState: 'waiting' | 'playing' | 'changing_round' | 'end',
+        newState: GameState,
     ) {
         const room = this.rooms.get(roomId);
         if (room) {
             room.state = newState;
+        }
+    }
+
+    updatePlayerList(roomId: string, server: Server) {
+        const room = this.rooms.get(roomId);
+        if (room) {
+            server.to(roomId).emit('playerList', room.players);
         }
     }
 
