@@ -14,7 +14,6 @@ import { UsersService } from './modules/users/users.service';
 import { JWTTokenService } from './modules/jwtToken/jwtToken.service';
 import { UsersController } from './modules/users/users.controller';
 import { MailService } from './modules/mail/mail.service';
-import { ChatGateway } from './gateways/chat/chat.gateway';
 import { GameGateway } from './gateways/game/game.gateway';
 import { GameService } from './gateways/game/game.service';
 import { TurnService } from './gateways/game/turn.service';
@@ -42,7 +41,6 @@ import { TurnService } from './gateways/game/turn.service';
         UsersService,
         JWTTokenService,
         MailService,
-        ChatGateway,
         GameGateway,
         GameService,
         TurnService,

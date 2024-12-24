@@ -9,6 +9,11 @@ import { Server, Socket } from 'socket.io';
 import { GameService } from './game.service';
 import { TurnService } from './turn.service';
 import { PayloadEvent } from './game.payload';
+import { UseGuards } from '@nestjs/common';
+import { WsAuthGuard } from 'src/guards/wsauth.guard';
+import Redis from 'ioredis';
+import { RedisService } from '@liaoliaots/nestjs-redis';
+import { UsersService } from 'src/modules/users/users.service';
 
 @WebSocketGateway({
     cors: {
@@ -17,18 +22,53 @@ import { PayloadEvent } from './game.payload';
     transport: ['websocket'],
     namespace: 'game',
 })
-// @UseGuards(WsAuthGuard)
 export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server: Server;
 
+    private readonly redis: Redis | null;
+
     constructor(
         private readonly gameService: GameService,
         private readonly turnService: TurnService,
-    ) {}
+        private readonly redisService: RedisService,
+        private usersService: UsersService,
+    ) {
+        this.redis = this.redisService.getOrThrow();
+    }
 
-    handleConnection(client: Socket) {
-        console.log(`Client connected: ${client.id}`);
+    async handleConnection(client: Socket) {
+        const token = client.handshake.query.token;
+        if (!token) {
+            client.emit('error', {
+                error: 'Unauthorized',
+                message: 'Unauthorized!',
+            });
+            client.disconnect();
+            return;
+        }
+
+        const id = await this.redis?.get(`accessToken:${token}`);
+        if (!id) {
+            client.emit('error', {
+                error: 'Unauthorized',
+                message: 'Invalid token!',
+            });
+            return;
+        }
+        const user = await this.usersService.findById(id);
+        if (!user) {
+            client.emit('error', {
+                error: 'Unauthorized',
+                message: 'Invalid token!',
+            });
+            return;
+        }
+
+        this.gameService.connectedClients.set(client.id, user.username);
+
+        console.log(`Client connected: ${user.username} (${client.id})`);
+        client.emit('ping', 'pong');
     }
 
     async handleDisconnect(client: Socket) {
@@ -36,28 +76,39 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             client.id,
         );
         if (room) {
-            if (room.state == "waiting" && room.host == client.id) {
-                console.log(room.id, 'was deleted because host left the room');
-                this.server.to(room.id).emit('roomClosed', "Host left the room");
+            if (room.state == 'waiting' && room.host == client.id) {
+                console.log(
+                    'Room ID:',
+                    room.id,
+                    'was deleted because host left the room',
+                );
+                this.server
+                    .to(room.id)
+                    .emit('roomClosed', 'Host left the room');
                 this.gameService.deleteRoom(room.id);
                 return;
-            };
+            }
             await this.gameService.removePlayer(room.id, client.id);
             this.server.to(room.id).emit('playerList', room.players);
         }
-        console.log(`Client ${client.id} disconnected`);
+        console.log(
+            `Client disconnected: ${this.gameService.connectedClients.get(client.id)} (${client.id})`,
+        );
+        this.gameService.connectedClients.delete(client.id);
     }
 
+    @UseGuards(WsAuthGuard)
     @SubscribeMessage('createRoom')
     async handleCreateRoom(client: Socket) {
         const roomId: string = this.gameService.generateLobbyCode();
-        const room = this.gameService.createRoom(client, roomId);      
+        const room = this.gameService.createRoom(client, roomId);
         await this.gameService.addPlayer(roomId, client.id);
         client.join(roomId);
         client.emit('roomCreated', JSON.stringify(room));
         console.log('Room Created:', roomId);
     }
 
+    @UseGuards(WsAuthGuard)
     @SubscribeMessage('startGame')
     handleStartGame(
         client: Socket,
@@ -79,12 +130,18 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     ) {
         const room = this.gameService.getRoom(roomId);
         if (!room) {
-            client.emit('startGame', { error: 'Room not found!' });
+            client.emit(
+                'startGame',
+                JSON.stringify({ error: 'Room not found!' }),
+            );
             return;
         }
 
         if (room.state !== 'waiting') {
-            client.emit('startGame', { error: 'Room not found!' });
+            client.emit(
+                'startGame',
+                JSON.stringify({ error: 'Room not found!' }),
+            );
             return;
         }
 
@@ -95,6 +152,16 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             wordsCount,
             hintsCount,
         });
+
+        if (room.players.length < 2) {
+            client.emit(
+                'startGame',
+                JSON.stringify({
+                    error: 'At least 2 players is required to start the game!',
+                }),
+            );
+            return;
+        }
 
         this.server
             .to(roomId)
@@ -107,6 +174,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }, 1000);
     }
 
+    @UseGuards(WsAuthGuard)
     @SubscribeMessage('chooseWord')
     handleChooseWord(
         client: Socket,
@@ -141,6 +209,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.turnService.startTurn(roomId, this.server);
     }
 
+    @UseGuards(WsAuthGuard)
     @SubscribeMessage('roomInfo')
     handleRoomInfo(client: Socket, { roomId }: { roomId: string }) {
         const room = this.gameService.getRoom(roomId);
@@ -155,6 +224,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.emit('roomInfo', JSON.stringify(room));
     }
 
+    @UseGuards(WsAuthGuard)
     @SubscribeMessage('joinRoom')
     async handleJoinRoom(client: Socket, { roomId }: { roomId: string }) {
         const room = this.gameService.getRoom(roomId);
@@ -174,6 +244,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(roomId).emit('playerList', room.players);
     }
 
+    @UseGuards(WsAuthGuard)
     @SubscribeMessage('drawEvent')
     handleDrawData(
         client: Socket,
@@ -196,6 +267,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(roomId).emit('drawEvent', JSON.stringify(payload));
     }
 
+    @UseGuards(WsAuthGuard)
     @SubscribeMessage('playerList')
     handlePlayerList(client: Socket, { roomId }: { roomId: string }) {
         const room = this.gameService.getRoom(roomId);
@@ -211,28 +283,64 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.emit('playerList', room.players);
     }
 
+    @UseGuards(WsAuthGuard)
     @SubscribeMessage('chatMessage')
-    handleChatMessage(client: Socket, { roomId, message }: { roomId: string; message: string }) {
+    handleChatMessage(
+        client: Socket,
+        { roomId, message }: { roomId: string; message: string },
+    ) {
         const room = this.gameService.getRoom(roomId);
         if (!room) {
-            client.emit('chatMessage', JSON.stringify({ error: 'Room not found!' }));
+            client.emit(
+                'chatMessage',
+                JSON.stringify({ error: 'Room not found!' }),
+            );
             return;
         }
 
         if (room.state == 'playing') {
             const guessedPlayer = this.turnService.guessedPlayer.get(roomId);
-            if (guessedPlayer?.includes(client.id)) {        
-                guessedPlayer.forEach(player => {
-                    this.server.to(player).emit('chatGuessed', JSON.stringify({ message, sender: client.id }))
+            if (guessedPlayer?.includes(client.id)) {
+                guessedPlayer.forEach((player) => {
+                    this.server.to(player).emit(
+                        'chatGuessed',
+                        JSON.stringify({
+                            message,
+                            sender: this.gameService.connectedClients.get(
+                                client.id,
+                            ),
+                        }),
+                    );
                 });
                 return;
             }
-            if (this.turnService.answerHandler(roomId, this.server, client.id, message)) {        
-                this.server.to(roomId).emit('chatGuessed', JSON.stringify({ message: "guessed", sender: client.id }));
+            if (
+                this.turnService.answerHandler(
+                    roomId,
+                    this.server,
+                    client.id,
+                    message,
+                )
+            ) {
+                this.server.to(roomId).emit(
+                    'chatGuessed',
+                    JSON.stringify({
+                        message: 'guessed',
+                        sender: this.gameService.connectedClients.get(
+                            client.id,
+                        ),
+                    }),
+                );
                 return;
             }
         }
 
-        this.server.to(roomId).emit('chatMessage', JSON.stringify({ message, sender: client.id }));
+        this.server.to(roomId).emit(
+            'chatMessage',
+            JSON.stringify({
+                message,
+                sender: this.gameService.connectedClients.get(client.id),
+            }),
+        );
     }
 }

@@ -8,12 +8,11 @@ import { GameState, wordsList } from './game.payload';
 export class GameService {
     private readonly redis: Redis | null;
 
-    constructor(
-        private readonly redisService: RedisService,
-    ) {
+    constructor(private readonly redisService: RedisService) {
         this.redis = this.redisService.getOrThrow();
     }
 
+    public connectedClients: Map<string, string> = new Map();
     private rooms: Map<
         string,
         {
@@ -23,6 +22,7 @@ export class GameService {
             players: {
                 id: string;
                 score: number;
+                name: string;
             }[];
             currentRound: number;
             totalRounds: number;
@@ -81,7 +81,7 @@ export class GameService {
         // if (changes.customWords) room.words = changes.customWords;
         if (changes.wordsCount) room.wordsCount = changes.wordsCount;
         if (changes.hintsCount) room.hintsCount = changes.hintsCount;
-        
+
         return true;
     }
 
@@ -89,7 +89,11 @@ export class GameService {
         const room = this.rooms.get(roomId);
         if (!room) return false;
 
-        room.players.push({ id: player, score: 0 });
+        room.players.push({
+            id: player,
+            score: 0,
+            name: this.connectedClients.get(player) || 'Player',
+        });
         await this.redis?.set(`playerRoom:${player}`, roomId);
         return true;
     }
@@ -106,10 +110,7 @@ export class GameService {
         return true;
     }
 
-    updateRoomState(
-        roomId: string,
-        newState: GameState,
-    ) {
+    updateRoomState(roomId: string, newState: GameState) {
         const room = this.rooms.get(roomId);
         if (room) {
             room.state = newState;

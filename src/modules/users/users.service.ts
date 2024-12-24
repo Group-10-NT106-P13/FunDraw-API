@@ -10,7 +10,6 @@ import * as bcrypt from 'bcrypt';
 import { MailService } from '../mail/mail.service';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import Redis from 'ioredis';
-import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class UsersService {
@@ -90,7 +89,7 @@ export class UsersService {
             throw new BadRequestException('User not found!');
         }
 
-        if (await this.redis?.get('resetPasswordEmail:' + email)) {
+        if (await this.redis?.get('resetPassword:' + email)) {
             const ttl = await this.redis?.ttl('resetPasswordEmail:' + email);
             throw new HttpException(
                 `You can only send another reset password request after ${ttl} seconds`,
@@ -98,25 +97,39 @@ export class UsersService {
             );
         }
 
-        const resetToken = uuidv4();
+        const otp = Array.from({ length: 6 }, () =>
+            Math.floor(Math.random() * 10),
+        ).join('');
 
-        await this.mailService.sendResetPasswordMail(
-            email,
-            user.username,
-            resetToken,
-        );
+        await this.mailService.sendResetPasswordMail(email, user.username, otp);
+        await this.redis?.set(`resetPassword:${email}`, user.id, 'EX', 900);
         await this.redis?.set(
-            `resetPasswordEmail:${email}`,
+            `resetPassword:${email}:${otp}`,
             user.id,
             'EX',
             900,
         );
-        await this.redis?.set(
-            `resetPasswordToken:${email}`,
-            resetToken,
-            'EX',
-            900,
-        );
+
+        return true;
+    }
+
+    async resetOTP(email: string, otp: string, password: string) {
+        const userId = await this.redis?.get(`resetPassword:${email}:${otp}`);
+
+        if (!userId) {
+            throw new BadRequestException('Invalid OTP');
+        }
+
+        const hashed_password = await bcrypt.hash(password, 10);
+
+        await this.prisma.users.update({
+            where: {
+                id: userId,
+            },
+            data: {
+                password: hashed_password,
+            },
+        });
 
         return true;
     }

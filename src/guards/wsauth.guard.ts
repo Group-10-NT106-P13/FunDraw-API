@@ -36,23 +36,33 @@ export class WsAuthGuard implements CanActivate {
         const token = client.handshake.query.token;
 
         if (!token) {
-            client.emi('error', 'Unauthorized');
-            throw new UnauthorizedException();
+            client.emit('error', {
+                error: 'Unauthorized',
+                message: 'Unauthorized!',
+            });
+            client.disconnect();
+            throw new UnauthorizedException('Unauthorized');
         }
 
         const id = await this.redis?.get(`accessToken:${token}`);
 
         if (!id) {
+            client.emit('error', {
+                error: 'Unauthorized',
+                message: 'Invalid token!',
+            });
             throw new UnauthorizedException('Invalid token!');
         }
 
         const user = await this.usersService.findById(id);
 
         if (!user) {
+            client.emit('error', {
+                error: 'Unauthorized',
+                message: 'Invalid token!',
+            });
             throw new UnauthorizedException('Invalid token!');
         }
-
-        client.user = user;
 
         return true;
     }
