@@ -23,7 +23,7 @@ export class JWTTokenService {
             { id: userId },
             {
                 secret: this.configService.get('accessTokenSecret'),
-                expiresIn: '15m',
+                expiresIn: '3d',
             },
         );
         await this.prisma.users.update({
@@ -38,31 +38,6 @@ export class JWTTokenService {
         return accessToken;
     }
 
-    async setRefreshToken(userId: string) {
-        const refreshToken = await this.jwtService.signAsync(
-            { id: userId },
-            {
-                secret: this.configService.get('refreshTokenSecret'),
-                expiresIn: '7d',
-            },
-        );
-        await this.prisma.users.update({
-            where: {
-                id: userId,
-            },
-            data: {
-                refreshToken,
-            },
-        });
-        await this.redis?.set(
-            `refreshToken:${refreshToken}`,
-            userId,
-            'EX',
-            604800,
-        );
-        return refreshToken;
-    }
-
     async clearOldTokens(userId: string) {
         const user = await this.prisma.users.findUnique({
             where: {
@@ -73,7 +48,6 @@ export class JWTTokenService {
         if (!user) return false;
 
         await this.redis?.del(`accessToken:${user.accessToken}`);
-        await this.redis?.del(`refreshToken:${user.refreshToken}`);
 
         return true;
     }

@@ -1,14 +1,12 @@
 import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { Request } from 'express';
 import { Public } from 'src/decorators/public.decorator';
 import { RegisterDto } from './dto/register.dto';
 import {
     ApiBody,
     ApiHeader,
     ApiOperation,
-    ApiParam,
     ApiResponse,
     ApiTags,
 } from '@nestjs/swagger';
@@ -42,8 +40,6 @@ export class AuthController {
                         },
                         accessToken:
                             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijhi...',
-                        refreshToken:
-                            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjhiZj...',
                     },
                 },
             },
@@ -63,8 +59,7 @@ export class AuthController {
         },
     })
     async login(@Body() loginDto: LoginDto) {
-        const { user, accessToken, refreshToken } =
-            await this.authService.login(loginDto);
+        const { user, accessToken } = await this.authService.login(loginDto);
 
         return {
             statusCode: 200,
@@ -72,7 +67,6 @@ export class AuthController {
             data: {
                 user,
                 accessToken,
-                refreshToken,
             },
         };
     }
@@ -101,8 +95,6 @@ export class AuthController {
                         },
                         accessToken:
                             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijhi...',
-                        refreshToken:
-                            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjhiZj...',
                     },
                 },
             },
@@ -122,7 +114,7 @@ export class AuthController {
         },
     })
     async register(@Body() registerDto: RegisterDto) {
-        const { user, accessToken, refreshToken } =
+        const { user, accessToken } =
             await this.authService.register(registerDto);
 
         return {
@@ -131,64 +123,6 @@ export class AuthController {
             data: {
                 user,
                 accessToken,
-                refreshToken,
-            },
-        };
-    }
-
-    @Post('refresh-token')
-    @Public()
-    @ApiOperation({
-        summary: 'Refresh token',
-    })
-    @ApiParam({
-        name: 'refreshToken',
-        required: true,
-        type: 'string',
-    })
-    @ApiResponse({
-        status: 200,
-        description: 'Successfully refreshed tokens.',
-        content: {
-            'application/json': {
-                example: {
-                    statusCode: 200,
-                    message: 'Token refreshed',
-                    data: {
-                        accessToken:
-                            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijhi...',
-                        refreshToken:
-                            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjhiZj...',
-                    },
-                },
-            },
-        },
-    })
-    @ApiResponse({
-        status: 400,
-        description: 'Bad Request',
-        content: {
-            'application/json': {
-                example: {
-                    message: 'Invalid Token',
-                    error: 'Bad Request',
-                    statusCode: 400,
-                },
-            },
-        },
-    })
-    async refreshToken(@Req() req: Request) {
-        const refreshToken = req.query['refreshToken'] as string;
-
-        const { accessToken, newRefreshToken } =
-            await this.authService.refreshToken(refreshToken);
-
-        return {
-            statusCode: 200,
-            message: 'Token refreshed',
-            data: {
-                accessToken,
-                refreshToken: newRefreshToken,
             },
         };
     }

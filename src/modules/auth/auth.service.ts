@@ -38,15 +38,12 @@ export class AuthService {
 
         delete (user as any).password;
         delete (user as any).accessToken;
-        delete (user as any).refreshToken;
 
         const accessToken = await this.jwtToken.setAccessToken(user.id);
-        const refreshToken = await this.jwtToken.setRefreshToken(user.id);
 
         return {
             user,
             accessToken,
-            refreshToken,
         };
     }
 
@@ -92,46 +89,11 @@ export class AuthService {
         delete (user as any).refreshToken;
 
         const accessToken = await this.jwtToken.setAccessToken(user.id);
-        const refreshToken = await this.jwtToken.setRefreshToken(user.id);
 
         return {
             user,
             accessToken,
-            refreshToken,
         };
-    }
-
-    async refreshToken(token: string) {
-        try {
-            const id = await this.redis?.get(
-                `refreshToken:${token.replace('Bearer ', '')}`,
-            );
-
-            if (!id) {
-                throw new BadRequestException('Invalid Token');
-            }
-
-            const user = await this.prisma.users.findUnique({
-                where: {
-                    id,
-                },
-            });
-
-            if (!user) {
-                throw new BadRequestException('Invalid Token');
-            }
-
-            await this.jwtToken.clearOldTokens(user.id);
-
-            const accessToken = await this.jwtToken.setAccessToken(user.id);
-            const newRefreshToken = await this.jwtToken.setRefreshToken(
-                user.id,
-            );
-
-            return { accessToken, newRefreshToken };
-        } catch (e) {
-            throw new BadRequestException(e.message);
-        }
     }
 
     async logout(userId: string) {
@@ -150,7 +112,6 @@ export class AuthService {
             },
             data: {
                 accessToken: null,
-                refreshToken: null,
             },
         });
 
