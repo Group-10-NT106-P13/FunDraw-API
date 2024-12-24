@@ -11,6 +11,7 @@ import { ApiBody, ApiHeader, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Public } from 'src/decorators/public.decorator';
+import { ResetOTPDto } from './dto/reset-otp.dto';
 
 @Controller('users')
 export class UsersController {
@@ -165,7 +166,55 @@ export class UsersController {
         return {
             statusCode: 200,
             message:
-                'Successfully sent reset password link, please check your email',
+                'Successfully sent reset password email, please check your email',
+        };
+    }
+
+    @Post('reset-otp')
+    @ApiOperation({
+        summary: 'Reset user password',
+    })
+    @ApiBody({ type: ResetPasswordDto })
+    @ApiResponse({
+        status: 200,
+        description: 'Successfully sent an email to reset user password.',
+        content: {
+            'application/json': {
+                example: {
+                    statusCode: 200,
+                    message:
+                        'Successfully sent reset password link, please check your email',
+                },
+            },
+        },
+    })
+    @ApiResponse({
+        status: 400,
+        description: 'Bad Request',
+        content: {
+            'application/json': {
+                example: {
+                    message: 'User not found!',
+                    error: 'Bad Request',
+                    statusCode: 400,
+                },
+            },
+        },
+    })
+    @Public()
+    async resetOTP(@Body() resetOTPDto: ResetOTPDto) {
+        const { email, otp, password, confirm_password } = resetOTPDto;
+
+        if (password !== confirm_password) {
+            throw new BadRequestException('Password not match');
+        }
+
+        await this.usersService.resetOTP(email, otp, password);
+
+        return {
+            statusCode: 200,
+            message:
+                'Successfully changed password. Please login with new password',
         };
     }
 }

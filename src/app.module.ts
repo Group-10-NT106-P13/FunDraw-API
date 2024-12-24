@@ -14,6 +14,9 @@ import { UsersService } from './modules/users/users.service';
 import { JWTTokenService } from './modules/jwtToken/jwtToken.service';
 import { UsersController } from './modules/users/users.controller';
 import { MailService } from './modules/mail/mail.service';
+import { GameGateway } from './gateways/game/game.gateway';
+import { GameService } from './gateways/game/game.service';
+import { TurnService } from './gateways/game/turn.service';
 
 @Module({
     imports: [
@@ -38,6 +41,9 @@ import { MailService } from './modules/mail/mail.service';
         UsersService,
         JWTTokenService,
         MailService,
+        GameGateway,
+        GameService,
+        TurnService,
     ],
 })
 export class AppModule {}
