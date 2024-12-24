@@ -111,15 +111,16 @@ export class UsersController {
 
         const userId = req['user']?.id;
 
-        const { accessToken, refreshToken } =
-            await this.usersService.changePassword(userId, password);
+        const { accessToken } = await this.usersService.changePassword(
+            userId,
+            password,
+        );
 
         return {
             statusCode: 200,
             message: 'Password change successful',
             data: {
                 accessToken,
-                refreshToken,
             },
         };
     }

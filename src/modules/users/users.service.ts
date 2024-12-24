@@ -73,11 +73,9 @@ export class UsersService {
 
         await this.jwtToken.clearOldTokens(userId);
         const accessToken = await this.jwtToken.setAccessToken(userId);
-        const refreshToken = await this.jwtToken.setRefreshToken(userId);
 
         return {
             accessToken,
-            refreshToken,
         };
     }
 
